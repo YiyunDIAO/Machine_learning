@@ -1,4 +1,3 @@
-from IPython.display import display 
 import pandas as pd 
 import numpy as np 
 import os 
@@ -7,8 +6,15 @@ pd.set_option('display.max_rows', None)
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 
-
+from IPython.display import display 
 from sklearn.preprocessing import MinMaxScaler 
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC 
+from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.model_selection import GridSearchCV
+
+
 class ml_dataset: 
     ## this is used to get a dataset as a class in order to achieve basic manipulation 
     def __init__(self, dataframe, target_variable):
@@ -79,7 +85,7 @@ class ml_dataset:
                 
         display(self.df_summary) 
         
-    def training_prep(self, split = {'train': 0.6, 'test': 0.2, 'validation': 0.2}, target = 'loan_status'): 
+    def training_prep(self, split = {'train': 0.7, 'test': 0.3}, target = 'loan_status'): 
         """
         This function will automatically do: 1) Onehot encoding; 2) Train-Validation-Test Split 
         it will return train, test, validation split 
@@ -98,27 +104,22 @@ class ml_dataset:
 
         train_size = split['train'] 
         test_size = split['test'] 
-        validation_size = split['validation'] 
 
         # split out validation first 
-        X_train_test, X_validate, y_train_test, y_validate = train_test_split(X, y, test_size=validation_size, random_state=42)
-
-        # then split out train/test 
-        X_train, X_test, y_train, y_test = train_test_split(X_train_test, y_train_test, test_size=test_size/(train_size + test_size), random_state=42)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
         
-        
-        return X_train, X_test, X_validate, y_train, y_test, y_validate
+        return X_train, X_test, y_train, y_test
 
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.svm import SVC 
-from sklearn.metrics import accuracy_score, roc_auc_score
 
 class classificationModel: 
      def __init__(self, model):
          """
          Initiate model object 
          """
+         self.model_type = model
+         # initiate train and test time to avoid code error 
+         self.train_time = 0
+         self.query_time = 0 
          if model == 'DecisionTree': 
              self.model = DecisionTreeClassifier() 
          elif model == 'KNN': 
@@ -131,12 +132,17 @@ class classificationModel:
          """
          Function to fit the model 
          """
+         import time 
+         # record the training time under default setting 
+         training_start_time = time.time() 
          self.model.fit(X_train, y_train) 
-
-     def evaluate_performance(self, X_train, y_train, X_test, y_test, X_validate, y_validate):  
+         self.train_time = time.time() - training_start_time 
+            
+     def evaluate_performance(self, X_train, y_train, X_test, y_test):  
          """
          Evaluate model performance in terms of accuracy and AUC 
          """
+         import time 
          sample = [] 
          accuracy = [] 
          auc = [] 
@@ -146,13 +152,45 @@ class classificationModel:
          auc.append(roc_auc_score(y_train, self.model.predict_proba(X_train)[:, 1]))
          
          sample.append('Test') 
+         # record the number of time spent in testing 
+         testing_start_time = time.time() 
+         testing_prob = self.model.predict_proba(X_test)
+         self.query_time = time.time() - testing_start_time
+         
          accuracy.append(self.model.score(X_test, y_test))
-         auc.append(roc_auc_score(y_test, self.model.predict_proba(X_test)[:, 1]))
+         auc.append(roc_auc_score(y_test, testing_prob[:, 1]))
          
-         sample.append('Validate') 
-         accuracy.append(self.model.score(X_validate, y_validate)) 
-         auc.append(roc_auc_score(y_validate, self.model.predict_proba(X_validate)[:, 1]))
-         
-         self.performance = pd.DataFrame({'sample': sample, 'accuracy': accuracy, 'auc': auc})
+         time = [self.train_time, self.query_time] 
+         self.performance = pd.DataFrame({'sample': sample, 'accuracy': accuracy, 'auc': auc, 'time (seconds)': time})
         
          return self.performance 
+         
+     def GridSearch(self, X_train, y_train): 
+         """
+         perform grid search and automatic hyperparameter tuning 
+         """
+         if self.model_type == 'DecisionTree': 
+            print('performing hyperparameter tuning for Decision Tree') 
+            parameters = {
+                 'max_depth': [5, 10, 15, None], 
+                 'max_features': [10, 15, 20, 23],
+             }
+         elif self.model_type == 'KNN': 
+            print('performing hyperparameter tuning for KNN') 
+            parameters = {
+                'n_neighbors': [5, 10, 15, 20], 
+                'weights': ['uniform', 'distance'] 
+            }
+         elif self.model_type == 'SVM': 
+            print('performing hyperparameter tuning for SVM')
+            parameters = {
+                'degree': [2, 3, 4] 
+            }
+
+         # actually performing the grid search 
+         self.GridSearchCV = GridSearchCV(estimator = self.model, param_grid = parameters) 
+         self.GridSearchCV.fit(X_train, y_train)
+         print('best parameter:') 
+         print(self.GridSearchCV.best_params_) 
+         # update the model with the best model  from GridSearch 
+         self.model = self.GridSearchCV.best_estimator_
