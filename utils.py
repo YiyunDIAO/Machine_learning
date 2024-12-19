@@ -10,6 +10,7 @@ from IPython.display import display
 from sklearn.preprocessing import MinMaxScaler 
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC 
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.model_selection import GridSearchCV
@@ -126,7 +127,8 @@ class classificationModel:
              self.model = KNeighborsClassifier() 
          elif model == 'SVM': 
              self.model = SVC(probability=True) 
-            
+         elif model == 'NeuralNetwork': 
+             self.model = MLPClassifier() 
         
      def fit(self, X_train, y_train): 
          """
@@ -186,6 +188,12 @@ class classificationModel:
             parameters = {
                 'degree': [2, 3, 4] 
             }
+         elif self.model_type == 'NeuralNetwork': 
+            print('performing hyperparameter tuning for Neural Network')
+            parameters = {
+                'hidden_layer_sizes': [(100,), (200, ), (100,100)],
+                'max_iter': [100, 200, 500]
+            }  
 
          # actually performing the grid search 
          self.GridSearchCV = GridSearchCV(estimator = self.model, param_grid = parameters) 
